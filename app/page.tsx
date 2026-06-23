@@ -174,7 +174,7 @@ export default function Home() {
                           <span className="inline-block bg-blue-50 text-blue-700 rounded px-2 py-0.5 text-xs font-medium whitespace-nowrap">{part.category}</span>
                         </td>
                         <td className="px-4 py-3 text-gray-500 font-mono text-xs">{part.manufacturerPartNumber || "—"}</td>
-                        <td classNaapp/page.tsxme="px-4 py-3 text-right text-gray-800 whitespace-nowrap">
+                        <td className="px-4 py-3 text-right text-gray-800 whitespace-nowrap">
                           {part.price != null ? `$${part.price.toFixed(2)}` : "—"}
                         </td>
                         <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{part.supplier || "—"}</td>
