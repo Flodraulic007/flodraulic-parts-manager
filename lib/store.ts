@@ -32,7 +32,10 @@ const g = globalThis as typeof globalThis & {
 };
 
 function fileAdapter(): Adapter {
-  const dir = process.env.DATA_DIR || path.join(process.cwd(), "data");
+  // Vercel/serverless file systems are read-only except /tmp (which is per-instance and not durable).
+  const dir = process.env.DATA_DIR || (process.env.VERCEL ? "/tmp/flodraulic-data" : path.join(process.cwd(), "data"));
+  if (process.env.VERCEL && !process.env.DATA_DIR)
+    console.warn("[store] No MONGODB_URI on Vercel: using /tmp, data will NOT persist. Set MONGODB_URI.");
   const file = path.join(dir, "db.json");
   let data: FileData | null = null;
 
@@ -93,7 +96,8 @@ function mongoAdapter(uri: string): Adapter {
     return g.__fdMongo;
   };
   const coll = async (c: CollectionName) =>
-    (await client()).db(process.env.MONGODB_DB || "flodraulic").collection<Doc & { _id: string }>(c);
+    // "hub_" prefix keeps this app's data apart from any existing collections (e.g. the legacy "parts").
+    (await client()).db(process.env.MONGODB_DB || "flodraulic").collection<Doc & { _id: string }>(`hub_${c}`);
   const strip = <T>(d: Record<string, unknown>): T => {
     const { _id, ...rest } = d;
     void _id;

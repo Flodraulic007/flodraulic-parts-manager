@@ -1,7 +1,5 @@
 import "server-only";
 import crypto from "node:crypto";
-import fs from "node:fs";
-import path from "node:path";
 import { store } from "./store";
 import { DEFAULT_SETTINGS, newBom, newQuoteDoc } from "./defaults";
 import { currentRevision } from "./calc";
@@ -46,11 +44,9 @@ async function seed() {
     await s.put<User>("users", { id: "jeril", username: "jeril", name: "Jeril Benny", passwordHash: hashPassword("jeril") });
   }
   if ((await s.count("parts")) === 0) {
-    const file = path.join(process.cwd(), "data", "seed", "parts.json");
-    if (fs.existsSync(file)) {
-      const { parts } = JSON.parse(fs.readFileSync(file, "utf8")) as { parts: Part[] };
-      await s.putMany("parts", parts);
-    }
+    // Imported (not read from disk) so it is bundled into serverless deployments.
+    const { parts } = (await import("@/data/seed/parts.json")).default as unknown as { parts: Part[] };
+    await s.putMany("parts", parts);
   }
   if ((await s.count("projects")) === 0) await seedProjects();
 }

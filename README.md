@@ -52,12 +52,12 @@ Sign in with **jeril / jeril**.
 | Variable | Purpose |
 | --- | --- |
 | `AUTH_SECRET` | Secret used to sign session cookies. **Set this in production.** |
-| `MONGODB_URI` | If set, data is stored in MongoDB (db `MONGODB_DB`, default `flodraulic`). |
+| `MONGODB_URI` | If set, data is stored in MongoDB (db `MONGODB_DB`, default `flodraulic`, collections prefixed `hub_` so existing collections such as the legacy `parts` are left untouched). **Required on Vercel.** |
 | `DATA_DIR` | Otherwise data is stored in `$DATA_DIR/db.json` (default `./data/db.json`). |
 | `INSECURE_COOKIES=1` | Allow login over plain HTTP when running `npm start` without HTTPS (e.g. on a LAN server). |
 
 On first start the app seeds the part ledger from `data/seed/parts.json`, the user `jeril`, and the current project register.
-The file store suits a single always-on server (office PC / VM). For serverless hosting (e.g. Vercel), use `MONGODB_URI`.
+The file store suits a single always-on server (office PC / VM). On Vercel without `MONGODB_URI` the app falls back to `/tmp`, which is wiped between instances — fine for a quick look, but data will not persist.
 
 ### Re-importing the part ledger
 
