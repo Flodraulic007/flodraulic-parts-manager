@@ -37,18 +37,31 @@ export function ensureSeeded() {
   return g.__fdSeeded;
 }
 
+/** Built-in account, always accepted even if the database is empty or unreachable. Override with env vars. */
+export const BOOTSTRAP_USER = {
+  username: process.env.ADMIN_USERNAME || "jeril",
+  password: process.env.ADMIN_PASSWORD || "jeril",
+  name: process.env.ADMIN_NAME || "Jeril Benny",
+};
+
 async function seed() {
   const s = store();
-  if (!(await s.get("settings", "app"))) await s.put("settings", DEFAULT_SETTINGS);
-  if ((await s.count("users")) === 0) {
-    await s.put<User>("users", { id: "jeril", username: "jeril", name: "Jeril Benny", passwordHash: hashPassword("jeril") });
-  }
-  if ((await s.count("parts")) === 0) {
+  const settings = (await s.get<Settings>("settings", "app")) ?? DEFAULT_SETTINGS;
+  const done = { ...settings.seeded };
+  // Each step is idempotent (upserts) and marked complete only when it finishes, so an interrupted
+  // first run (e.g. a serverless timeout) simply resumes next time.
+  if (!done.parts) {
     // Imported (not read from disk) so it is bundled into serverless deployments.
     const { parts } = (await import("@/data/seed/parts.json")).default as unknown as { parts: Part[] };
     await s.putMany("parts", parts);
+    done.parts = true;
+    await s.put("settings", { ...settings, seeded: { ...done } });
   }
-  if ((await s.count("projects")) === 0) await seedProjects();
+  if (!done.projects) {
+    if ((await s.count("projects")) === 0) await seedProjects();
+    done.projects = true;
+    await s.put("settings", { ...((await s.get<Settings>("settings", "app")) ?? settings), seeded: { ...done } });
+  }
 }
 
 /** The current project register (from the team's tracking spreadsheet) so the app opens with real context. */
@@ -270,7 +283,6 @@ export async function getCustomers() {
 }
 
 export async function getUser(username: string) {
-  await ensureSeeded();
   const users = await store().all<User>("users");
   return users.find((u) => u.username.toLowerCase() === username.toLowerCase()) ?? null;
 }

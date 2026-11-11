@@ -91,7 +91,10 @@ function mongoAdapter(uri: string): Adapter {
   const client = async () => {
     if (!g.__fdMongo) {
       const { MongoClient } = await import("mongodb");
-      g.__fdMongo = new MongoClient(uri).connect();
+      g.__fdMongo = new MongoClient(uri, { serverSelectionTimeoutMS: 8000 }).connect().catch((e) => {
+        g.__fdMongo = undefined;
+        throw e;
+      });
     }
     return g.__fdMongo;
   };
@@ -116,12 +119,15 @@ function mongoAdapter(uri: string): Adapter {
       await (await coll(c)).replaceOne({ _id: doc.id }, { ...doc, _id: doc.id }, { upsert: true });
     },
     async putMany(c, docs) {
-      if (!docs.length) return;
-      await (await coll(c)).bulkWrite(
-        docs.map((doc) => ({
-          replaceOne: { filter: { _id: doc.id }, replacement: { ...doc, _id: doc.id }, upsert: true },
-        })),
-      );
+      const col = await coll(c);
+      for (let i = 0; i < docs.length; i += 500) {
+        await col.bulkWrite(
+          docs.slice(i, i + 500).map((doc) => ({
+            replaceOne: { filter: { _id: doc.id }, replacement: { ...doc, _id: doc.id }, upsert: true },
+          })),
+          { ordered: false },
+        );
+      }
     },
     async remove(c, id) {
       await (await coll(c)).deleteOne({ _id: id });

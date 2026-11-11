@@ -210,6 +210,8 @@ export interface Settings {
   nextMtr: number;
   team: TeamMember[];
   categories: Record<string, string>;
+  /** First-run seeding progress */
+  seeded?: { parts?: boolean; projects?: boolean };
 }
 
 export interface User {

@@ -52,6 +52,7 @@ Sign in with **jeril / jeril**.
 | Variable | Purpose |
 | --- | --- |
 | `AUTH_SECRET` | Secret used to sign session cookies. **Set this in production.** |
+| `ADMIN_USERNAME` / `ADMIN_PASSWORD` / `ADMIN_NAME` | Built-in account (default `jeril` / `jeril` / Jeril Benny). Always works, even before the database is set up. |
 | `MONGODB_URI` | If set, data is stored in MongoDB (db `MONGODB_DB`, default `flodraulic`, collections prefixed `hub_` so existing collections such as the legacy `parts` are left untouched). **Required on Vercel.** |
 | `DATA_DIR` | Otherwise data is stored in `$DATA_DIR/db.json` (default `./data/db.json`). |
 | `INSECURE_COOKIES=1` | Allow login over plain HTTP when running `npm start` without HTTPS (e.g. on a LAN server). |

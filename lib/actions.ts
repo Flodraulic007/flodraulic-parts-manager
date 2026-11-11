@@ -7,6 +7,7 @@ import { store } from "./store";
 import { requireUser } from "./auth";
 import { SESSION_COOKIE, signSession } from "./session";
 import {
+  BOOTSTRAP_USER,
   checkPassword,
   getCustomers,
   getParts,
@@ -34,8 +35,20 @@ export async function login(_: unknown, form: FormData): Promise<{ error?: strin
   const username = String(form.get("username") || "").trim();
   const password = String(form.get("password") || "");
   const next = String(form.get("next") || "/");
-  const user = username ? await getUser(username) : null;
-  if (!user || !checkPassword(password, user.passwordHash)) return { error: "Invalid username or password.", username };
+  let user: { username: string; name: string } | null = null;
+  const b = BOOTSTRAP_USER;
+  if (username.toLowerCase() === b.username.toLowerCase() && password === b.password) {
+    user = { username: b.username, name: b.name };
+  } else if (username) {
+    try {
+      const u = await getUser(username);
+      if (u && checkPassword(password, u.passwordHash)) user = u;
+    } catch (e) {
+      console.error("[login] user lookup failed", e);
+      return { error: "Can't reach the database to check this account. See the server logs (MONGODB_URI).", username };
+    }
+  }
+  if (!user) return { error: "Invalid username or password.", username };
   const { token, maxAge } = await signSession(user.username, user.name);
   (await cookies()).set(SESSION_COOKIE, token, {
     httpOnly: true,
