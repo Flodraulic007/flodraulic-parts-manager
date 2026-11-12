@@ -20,7 +20,7 @@ interface Row {
   recent: { id: string; stage: string; mtr: string; description: string }[];
 }
 
-export function CustomerList({ rows }: { rows: Row[] }) {
+export function CustomerList({ rows, manager, companyMargin }: { rows: Row[]; manager: boolean; companyMargin: number }) {
   const router = useRouter();
   const [q, setQ] = useState("");
   const [edit, setEdit] = useState<Customer | null>(null);
@@ -59,6 +59,11 @@ export function CustomerList({ rows }: { rows: Row[] }) {
                   <p className="text-xs text-gray-500">{r.last ? `Last project ${date(r.last)}` : "No projects yet"}</p>
                 </div>
               </div>
+              {manager && (
+                <span className="ml-auto mr-1 rounded-md bg-gray-100 px-2 py-0.5 text-xs font-semibold text-gray-700" title="Default margin for new quotes">
+                  {c.defaultMargin ?? companyMargin}% margin
+                </span>
+              )}
               <button onClick={() => setEdit(c)} className="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700" aria-label="Edit customer">
                 <Pencil className="size-4" />
               </button>
@@ -135,6 +140,20 @@ export function CustomerList({ rows }: { rows: Row[] }) {
             <Field label="Address" className="sm:col-span-2">
               <input className="field" value={edit.address} onChange={(e) => setEdit({ ...edit, address: e.target.value })} />
             </Field>
+            {manager && (
+              <Field label="Default margin (%)" hint={`company default ${companyMargin}%`} className="sm:col-span-2">
+                <input
+                  type="number"
+                  min={0}
+                  max={95}
+                  step={0.5}
+                  className="field"
+                  value={edit.defaultMargin ?? ""}
+                  placeholder={String(companyMargin)}
+                  onChange={(e) => setEdit({ ...edit, defaultMargin: e.target.value === "" ? undefined : +e.target.value })}
+                />
+              </Field>
+            )}
             <Field label="Notes" className="sm:col-span-2">
               <textarea className="field min-h-20" value={edit.notes} onChange={(e) => setEdit({ ...edit, notes: e.target.value })} />
             </Field>

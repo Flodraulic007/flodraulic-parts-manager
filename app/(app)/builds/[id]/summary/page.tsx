@@ -17,7 +17,7 @@ export default async function BuildSummaryPage({ params }: { params: Promise<{ i
         fields={BUILD_SUMMARY_FIELDS}
         values={p.build.summary}
         team={settings.team.map((t) => t.name)}
-        editable={p.buildStatus !== "shipped"}
+        editable={p.status !== "shipped"}
       />
     </div>
   );

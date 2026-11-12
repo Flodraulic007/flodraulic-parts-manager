@@ -5,6 +5,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Menu, Plus, Search, FileText, Wrench, Boxes } from "lucide-react";
 import { Button, Kbd, cx } from "./ui";
 import { NewQuoteModal, type CustomerLite } from "./new-quote-modal";
+import { NotificationBell } from "./notification-bell";
+import type { Notification, Role } from "@/lib/types";
 
 interface SearchItem {
   id: string;
@@ -17,15 +19,22 @@ interface SearchItem {
 
 export function Topbar({
   searchIndex,
-  team,
+  designers,
   customers,
   userName,
+  username,
+  role,
+  notifications,
 }: {
   searchIndex: SearchItem[];
-  team: string[];
+  designers: { username: string; name: string }[];
   customers: CustomerLite[];
   userName: string;
+  username: string;
+  role: Role;
+  notifications: Notification[];
 }) {
+  const canQuote = role !== "production";
   const router = useRouter();
   const [q, setQ] = useState("");
   const [focused, setFocused] = useState(false);
@@ -155,11 +164,24 @@ export function Topbar({
       </div>
 
       <div className="ml-auto flex items-center gap-2">
-        <Button variant="primary" icon={<Plus className="size-4" />} onClick={() => setNewOpen(true)}>
-          <span className="hidden sm:inline">New Quote</span>
-        </Button>
+        <NotificationBell items={notifications} />
+        {canQuote && (
+          <Button variant="primary" icon={<Plus className="size-4" />} onClick={() => setNewOpen(true)}>
+            <span className="hidden sm:inline">New Quote</span>
+          </Button>
+        )}
       </div>
-      <NewQuoteModal open={newOpen} onClose={() => setNewOpen(false)} team={team} customers={customers} userName={userName} />
+      {canQuote && (
+        <NewQuoteModal
+          open={newOpen}
+          onClose={() => setNewOpen(false)}
+          designers={designers}
+          customers={customers}
+          userName={userName}
+          username={username}
+          role={role}
+        />
+      )}
     </header>
   );
 }

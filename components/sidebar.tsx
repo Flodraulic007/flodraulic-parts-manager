@@ -13,25 +13,40 @@ import {
   Building2,
   Settings,
   LogOut,
+  Columns3,
+  Factory,
+  Truck,
+  Users,
+  UserCog,
 } from "lucide-react";
+import type { Role } from "@/lib/types";
+import { ROLE_LABEL } from "@/lib/workflow";
 import { logout } from "@/lib/actions";
 import { cx } from "./ui";
 
-const NAV = [
+type Item = { href: string; label: string; icon: typeof LayoutDashboard; count?: "quotes" | "builds" | "production" | "tasks"; roles?: Role[] };
+type Section = { section: string; roles?: Role[] };
+const NAV: (Item | Section)[] = [
   { section: "Workspace" },
-  { href: "/", label: "Overview", icon: LayoutDashboard },
+  { href: "/", label: "My dashboard", icon: LayoutDashboard, count: "tasks" },
+  { href: "/pipeline", label: "Stage overview", icon: Columns3, roles: ["manager"] },
   { href: "/projects", label: "Project Register", icon: ClipboardList },
   { section: "Workflow" },
-  { href: "/quotes", label: "Quoting", icon: FileText, count: "quotes" as const },
-  { href: "/builds", label: "Build (MTR)", icon: Wrench, count: "builds" as const },
+  { href: "/quotes", label: "Quoting", icon: FileText, count: "quotes", roles: ["manager", "designer"] },
+  { href: "/builds", label: "Build (MTR)", icon: Wrench, count: "builds" },
+  { href: "/production", label: "Production", icon: Factory, count: "production", roles: ["manager", "production"] },
   { href: "/purchasing", label: "Purchasing", icon: ShoppingCart },
   { section: "Reference" },
   { href: "/parts", label: "Part Numbers", icon: Boxes },
-  { href: "/customers", label: "Customers", icon: Building2 },
-  { href: "/settings", label: "Settings", icon: Settings },
-] as const;
+  { href: "/suppliers", label: "Suppliers", icon: Truck },
+  { href: "/customers", label: "Customers", icon: Building2, roles: ["manager", "designer"] },
+  { section: "Admin", roles: ["manager"] },
+  { href: "/users", label: "Users & roles", icon: Users, roles: ["manager"] },
+  { href: "/settings", label: "Settings", icon: Settings, roles: ["manager"] },
+  { href: "/account", label: "My account", icon: UserCog },
+];
 
-export function Sidebar({ counts, user }: { counts: { quotes: number; builds: number }; user: string }) {
+export function Sidebar({ counts, user, role }: { counts: Record<"quotes" | "builds" | "production" | "tasks", number>; user: string; role: Role }) {
   const path = usePathname();
   const [open, setOpen] = useState(false);
   useEffect(() => {
@@ -67,7 +82,7 @@ export function Sidebar({ counts, user }: { counts: { quotes: number; builds: nu
         </div>
 
         <nav className="flex-1 overflow-y-auto px-3 py-4">
-          {NAV.map((item, i) => {
+          {NAV.filter((item) => !item.roles || item.roles.includes(role)).map((item, i) => {
             if ("section" in item)
               return (
                 <div key={i} className="mb-1.5 mt-5 px-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 first:mt-0">
@@ -76,7 +91,7 @@ export function Sidebar({ counts, user }: { counts: { quotes: number; builds: nu
               );
             const active = item.href === "/" ? path === "/" : path.startsWith(item.href);
             const Icon = item.icon;
-            const count = "count" in item ? counts[item.count] : undefined;
+            const count = item.count ? counts[item.count] : undefined;
             return (
               <Link
                 key={item.href}
@@ -111,7 +126,7 @@ export function Sidebar({ counts, user }: { counts: { quotes: number; builds: nu
             </div>
             <div className="min-w-0 flex-1">
               <div className="truncate text-sm font-medium text-white">{user}</div>
-              <div className="text-xs text-gray-500">Electrical team</div>
+              <div className="text-xs text-gray-500">{ROLE_LABEL[role]}</div>
             </div>
             <form action={logout}>
               <button className="rounded-md p-1.5 text-gray-500 hover:bg-white/5 hover:text-white" title="Sign out" aria-label="Sign out">

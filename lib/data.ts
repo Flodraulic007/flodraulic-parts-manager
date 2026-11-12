@@ -4,7 +4,7 @@ import { store } from "./store";
 import { DEFAULT_SETTINGS, newBom, newQuoteDoc } from "./defaults";
 import { currentRevision } from "./calc";
 import { uid } from "./format";
-import type { Bom, Build, Customer, Part, Project, Settings, User } from "./types";
+import type { Bom, Build, Customer, Notification, Part, Project, ProjectStatus, Role, SessionUser, Settings, Supplier, User } from "./types";
 
 /* ------------------------------------------------------------------ */
 /* Passwords                                                           */
@@ -62,6 +62,63 @@ async function seed() {
     done.projects = true;
     await s.put("settings", { ...((await s.get<Settings>("settings", "app")) ?? settings), seeded: { ...done } });
   }
+  if (!done.suppliers) {
+    await seedSuppliers();
+    done.suppliers = true;
+    await s.put("settings", { ...((await s.get<Settings>("settings", "app")) ?? settings), seeded: { ...done } });
+  }
+  await ensureAdminUser();
+}
+
+/** The built-in account is the Admin / Manager. Make sure it exists as a real user record. */
+async function ensureAdminUser() {
+  const s = store();
+  const users = await s.all<User>("users");
+  const b = BOOTSTRAP_USER;
+  const existing = users.find((u) => u.username.toLowerCase() === b.username.toLowerCase());
+  if (existing && existing.role && existing.createdAt) return;
+  await s.put<User>("users", {
+    id: b.username.toLowerCase(),
+    username: b.username,
+    name: existing?.name || b.name,
+    email: process.env.ADMIN_EMAIL || "jbenny@flodraulic.com",
+    phone: "",
+    role: "manager",
+    title: "Manager",
+    active: true,
+    emailNotifications: false,
+    passwordHash: existing?.passwordHash || hashPassword(b.password),
+    createdAt: new Date().toISOString(),
+  });
+}
+
+/** Supplier directory starts from the distinct suppliers in the part ledger. */
+async function seedSuppliers() {
+  const s = store();
+  if ((await s.count("suppliers")) > 0) return;
+  const parts = await s.all<Part>("parts");
+  const by = new Map<string, { contacts: Map<string, number>; n: number }>();
+  for (const p of parts) {
+    const name = p.supplier.trim().toUpperCase();
+    if (!name || name.length < 2) continue;
+    const e = by.get(name) ?? { contacts: new Map(), n: 0 };
+    e.n++;
+    if (p.contact) e.contacts.set(p.contact, (e.contacts.get(p.contact) ?? 0) + 1);
+    by.set(name, e);
+  }
+  const now = new Date().toISOString();
+  const suppliers: Supplier[] = [...by.entries()].map(([name, e]) => ({
+    id: slug(name) || uid(),
+    name,
+    contactName: [...e.contacts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "",
+    email: "",
+    phone: "",
+    website: "",
+    address: "",
+    notes: `${e.n} part${e.n === 1 ? "" : "s"} in the PB ledger`,
+    createdAt: now,
+  }));
+  await s.putMany("suppliers", suppliers);
 }
 
 /** The current project register (from the team's tracking spreadsheet) so the app opens with real context. */
@@ -180,6 +237,8 @@ async function seedProjects() {
       stage: "quote",
       quoteStatus: "draft",
       buildStatus: "queued",
+      status: "drafting",
+      statusSince: created,
       createdAt: created,
       updatedAt: created,
       revisions: isRepeat
@@ -209,7 +268,8 @@ async function seedProjects() {
       p.build = makeBuild(p, isRepeat ? bom : p.revisions[0].bom, isRepeat ? null : 0, quotedBy, created);
       p.activity.unshift({ at: created, user: quotedBy, text: `Approved and moved to build as ${mtr}` });
     }
-    projects.push(p);
+    delete (p as Partial<Project>).status; // derived from the legacy fields above
+    projects.push(normalizeProject(p));
   });
   await s.putMany("customers", [...customers.values()]);
   await s.putMany("projects", projects);
@@ -257,19 +317,97 @@ export function makeBuild(p: Project, bom: Bom, approvedRev: number | null, by: 
 
 export async function getSettings() {
   await ensureSeeded();
-  const s = await store().get<Settings>("settings", "app");
-  return { ...DEFAULT_SETTINGS, ...s } as Settings;
+  const [s, users] = await Promise.all([store().get<Settings>("settings", "app"), store().all<User>("users")]);
+  const settings = { ...DEFAULT_SETTINGS, ...s } as Settings;
+  // The team (quoted by / designer pickers) comes from user accounts.
+  const active = users.filter((u) => u.active !== false);
+  if (active.length)
+    settings.team = active
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map((u) => ({ name: u.name, email: u.email ?? "", phone: u.phone ?? "", role: u.title || u.role }));
+  return settings;
+}
+
+/** Fill in workflow fields for projects created before the workflow existed. */
+export function normalizeProject(p: Project): Project {
+  if (!p.status) {
+    let st: ProjectStatus;
+    if (p.stage === "build")
+      st = p.buildStatus === "shipped" ? "shipped" : p.buildStatus === "queued" ? "building" : "in_production";
+    else
+      st = ({ draft: "drafting", sent: "sent", lost: "lost", hold: "hold", approved: "po_received" } as const)[p.quoteStatus] ?? "drafting";
+    p.status = st;
+  }
+  p.statusSince ??= p.updatedAt || p.createdAt;
+  p.comments ??= [];
+  if (p.build) p.build.changeLog ??= [];
+  return p;
 }
 
 export async function getProjects() {
   await ensureSeeded();
   const all = await store().all<Project>("projects");
-  return all.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return all.map(normalizeProject).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
 export async function getProject(id: string) {
   await ensureSeeded();
-  return store().get<Project>("projects", id);
+  const p = await store().get<Project>("projects", id);
+  return p ? normalizeProject(p) : null;
+}
+
+export async function getUsers() {
+  await ensureSeeded();
+  return (await store().all<User>("users"))
+    .map((u) => ({ ...u, role: u.role ?? ("manager" as Role), active: u.active ?? true }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export async function getSuppliers() {
+  await ensureSeeded();
+  return (await store().all<Supplier>("suppliers")).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export async function getNotifications(username: string) {
+  const all = await store().all<Notification>("notifications");
+  return all.filter((n) => n.user === username).sort((a, b) => b.at.localeCompare(a.at)).slice(0, 50);
+}
+
+/** Create in-app notifications (and send email to users who opted in, when SMTP is configured). */
+export async function notify(usernames: (string | undefined)[], text: string, href: string, except?: string) {
+  const users = await store().all<User>("users");
+  const targets = [...new Set(usernames.filter((u): u is string => !!u && u !== except))];
+  const now = new Date().toISOString();
+  const docs: Notification[] = targets.map((u) => ({ id: uid(), user: u, at: now, text, href, read: false }));
+  if (docs.length) await store().putMany("notifications", docs);
+  const emailTo = users.filter((u) => targets.includes(u.username) && u.emailNotifications && u.email && u.active !== false);
+  if (emailTo.length) await sendEmail(emailTo.map((u) => u.email), text, href).catch((e) => console.error("[notify] email failed", e));
+}
+
+async function sendEmail(to: string[], text: string, href: string) {
+  if (!process.env.SMTP_URL) return; // email is optional
+  const nodemailer = await import("nodemailer");
+  const t = nodemailer.createTransport(process.env.SMTP_URL);
+  const base = process.env.APP_URL || "";
+  await t.sendMail({
+    from: process.env.SMTP_FROM || "Flodraulic Controls Hub <no-reply@flodraulic.com>",
+    to,
+    subject: `[Controls Hub] ${text}`,
+    text: `${text}\n\n${base}${href}`,
+  });
+}
+
+export async function usersWithRole(role: Role) {
+  return (await getUsers()).filter((u) => u.role === role && u.active).map((u) => u.username);
+}
+
+/** Session user with the current role from the database (roles can change while signed in). */
+export async function resolveUser(username: string, fallbackName: string): Promise<SessionUser> {
+  try {
+    const u = (await store().all<User>("users")).find((x) => x.username.toLowerCase() === username.toLowerCase());
+    if (u) return { username: u.username, name: u.name, role: u.role ?? "manager" };
+  } catch {}
+  return { username, name: fallbackName, role: username.toLowerCase() === BOOTSTRAP_USER.username.toLowerCase() ? "manager" : "designer" };
 }
 
 export async function getParts() {
@@ -328,8 +466,15 @@ export function latestRevision(p: Project) {
 /** Current ledger info for every part number used in the given BOMs (for stale-price warnings). */
 export async function catalogFor(...boms: (Bom | undefined)[]) {
   const pns = new Set(boms.flatMap((b) => b?.lines.map((l) => l.partNumber) ?? []));
-  const out: Record<string, { cost: number; description: string; supplier: string; obsolete: boolean }> = {};
+  const out: Record<string, { cost: number; description: string; supplier: string; obsolete: boolean; docs: { id: string; name: string }[] }> = {};
   for (const p of await getParts())
-    if (pns.has(p.partNumber)) out[p.partNumber] = { cost: p.cost, description: p.description, supplier: p.supplier, obsolete: p.obsolete };
+    if (pns.has(p.partNumber))
+      out[p.partNumber] = {
+        cost: p.cost,
+        description: p.description,
+        supplier: p.supplier,
+        obsolete: p.obsolete,
+        docs: (p.docs ?? []).map((d) => ({ id: d.id, name: d.name })),
+      };
   return out;
 }

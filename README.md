@@ -37,6 +37,34 @@ Only the latest *draft* revision can be edited. Issuing a quote locks it; change
 - Actual parts margin = 1 − parts cost ÷ (price − labour − certification), with a warning below target.
 - BOM lines warn when the ledger cost has changed since they were added ("Update N prices").
 
+## Roles
+
+| Role | Can do |
+| --- | --- |
+| **Manager** (the built-in `jeril` account) | Everything: create users and set roles, assign quotes/builds, see and override margins, approve and send quotes, mark PO received, settings |
+| **Designer** | Build quotes and build BOMs assigned to them, send for peer review, review other designers' work. Never sees margins. |
+| **Production Manager** | Production view: start released builds and update progress through to shipped |
+
+Everyone gets **My dashboard** with the tasks waiting on them, and in-app notifications (bell). Email notifications are optional per user and need `SMTP_URL` set.
+
+## Workflow
+
+```
+Quote:  Drafting → In peer review ─┬→ Returned for changes → (designer fixes) → In peer review …
+                                   └→ Awaiting manager → Sent to client ─┬→ Revision requested (new version, reason required) → review again
+                                                                          └→ PO received
+Build:  PO received → Building → Build review ─┬→ Build returned → Building …
+                                               └→ Ready for production → In production → Shipped
+```
+
+- Every status change is logged with who, when and the comment, and shown on each project's **Timeline** with time spent per status.
+- **Stage overview** (managers) groups open projects by stage and highlights the ones that have been there too long.
+- Reviewers comment on the whole BOM or on individual lines; open comments travel with "Return for changes".
+- **Customer margins**: each customer has a default margin that new quotes inherit; a manager can override it per quote (logged in the timeline).
+- **Revisions** (v1, v2 …) need a reason and who asked (customer / internal). Compare any two versions side by side with price differences.
+- On **PO received**, the quote is frozen and the build gets its own copy of the BOM. Every build BOM change asks for a reason (the **change log**), the cumulative difference from the quote is shown, and a build that drifts past the threshold in Settings (default 10%) is flagged for a possible quote revision.
+- **Suppliers** directory (seeded from the ledger's supplier names) and **part documents** (datasheets, manuals; up to 4 MB each) that open from the parts list and from BOM lines.
+
 ## Running
 
 ```bash
@@ -52,7 +80,8 @@ Sign in with **jeril / jeril**.
 | Variable | Purpose |
 | --- | --- |
 | `AUTH_SECRET` | Secret used to sign session cookies. **Set this in production.** |
-| `ADMIN_USERNAME` / `ADMIN_PASSWORD` / `ADMIN_NAME` | Built-in account (default `jeril` / `jeril` / Jeril Benny). Always works, even before the database is set up. |
+| `ADMIN_USERNAME` / `ADMIN_PASSWORD` / `ADMIN_NAME` | Built-in manager account (default `jeril` / `jeril` / Jeril Benny). Works even before the database is set up, until its password is changed under My account. |
+| `SMTP_URL`, `SMTP_FROM`, `APP_URL` | Optional: send email notifications (e.g. `smtps://user:pass@smtp.example.com`). `APP_URL` makes the links in emails absolute. |
 | `MONGODB_URI` | If set, data is stored in MongoDB (db `MONGODB_DB`, default `flodraulic`, collections prefixed `hub_` so existing collections such as the legacy `parts` are left untouched). **Required on Vercel.** |
 | `DATA_DIR` | Otherwise data is stored in `$DATA_DIR/db.json` (default `./data/db.json`). |
 | `INSECURE_COOKIES=1` | Allow login over plain HTTP when running `npm start` without HTTPS (e.g. on a LAN server). |

@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, ArrowDown, ArrowUp, Download, ExternalLink, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowUp, Download, ExternalLink, FileText, MessageSquare, Plus, RefreshCw, Trash2 } from "lucide-react";
 import type { Bom, BomLine, ProcurementStatus, Uom } from "@/lib/types";
 import { bomTotals, labourRateCAD, lineTotal } from "@/lib/calc";
 import { money, moneyUSD, pct, uid } from "@/lib/format";
@@ -13,6 +13,7 @@ export interface CatalogInfo {
   description: string;
   supplier: string;
   obsolete: boolean;
+  docs?: { id: string; name: string }[];
 }
 
 const UOMS: Uom[] = ["ea", "m", "ft", "hr", "lot"];
@@ -31,6 +32,9 @@ export function BomEditor({
   catalog,
   title,
   exportName,
+  showMargin = true,
+  lineComments,
+  onLineComment,
 }: {
   bom: Bom;
   onChange: (b: Bom) => void;
@@ -39,6 +43,10 @@ export function BomEditor({
   catalog: Record<string, CatalogInfo>;
   title?: string;
   exportName: string;
+  /** Margin information is for managers only */
+  showMargin?: boolean;
+  lineComments?: Record<string, number>;
+  onLineComment?: (line: BomLine) => void;
 }) {
   const t = bomTotals(bom);
   const set = <K extends keyof Bom>(k: K, v: Bom[K]) => onChange({ ...bom, [k]: v });
@@ -99,10 +107,14 @@ export function BomEditor({
         ]),
         [],
         ["", "", "PARTS SUB TOTAL", "", "", "", t.partsSubtotal.toFixed(2)],
-        ["", "", `PARTS SELL PRICE ${bom.targetMargin}% MARGIN`, "", "", "", t.partsSell.toFixed(2)],
+        ...(showMargin ? [["", "", `PARTS SELL PRICE ${bom.targetMargin}% MARGIN`, "", "", "", t.partsSell.toFixed(2)]] : []),
         ["", "", "TOTAL LABOUR SELL", "", "", "", t.labourSell.toFixed(2)],
-        ["", "", "BUILD COST (PARTS + LABOUR SELL)", "", "", "", t.buildCost.toFixed(2)],
-        ["", "", "TOTAL COST WITH CERTIFICATION", "", "", "", t.totalWithCert.toFixed(2)],
+        ...(showMargin
+          ? [
+              ["", "", "BUILD COST (PARTS + LABOUR SELL)", "", "", "", t.buildCost.toFixed(2)],
+              ["", "", "TOTAL COST WITH CERTIFICATION", "", "", "", t.totalWithCert.toFixed(2)],
+            ]
+          : []),
         ["", "", "ACTUAL QUOTE PRICE", "", "", "", t.quotePrice.toFixed(2)],
         ["", "", "ACTUAL QUOTE PRICE [USD]", "", "", "", t.quotePriceUSD.toFixed(2)],
       ],
@@ -323,6 +335,32 @@ export function BomEditor({
                       )}
                       <td className="px-2 py-1">
                         <div className="flex items-center justify-end gap-0.5">
+                          {cat?.docs?.map((d) => (
+                            <a
+                              key={d.id}
+                              href={`/api/parts/${encodeURIComponent(l.partNumber)}/docs/${d.id}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="rounded p-1 text-sky-600 hover:bg-sky-50"
+                              title={`Open ${d.name}`}
+                            >
+                              <FileText className="size-3.5" />
+                            </a>
+                          ))}
+                          {onLineComment && (
+                            <button
+                              type="button"
+                              onClick={() => onLineComment(l)}
+                              title={lineComments?.[l.id] ? `${lineComments[l.id]} open comment(s)` : "Comment on this line"}
+                              className={cx(
+                                "flex items-center gap-0.5 rounded p-1 text-xs font-semibold",
+                                lineComments?.[l.id] ? "bg-amber-50 text-amber-700" : "text-gray-300 hover:bg-gray-100 hover:text-gray-600",
+                              )}
+                            >
+                              <MessageSquare className="size-3.5" />
+                              {lineComments?.[l.id] ? lineComments[l.id] : null}
+                            </button>
+                          )}
                           {l.link && (
                             <a href={l.link} target="_blank" rel="noreferrer" className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700" title="Supplier link">
                               <ExternalLink className="size-3.5" />
@@ -363,17 +401,17 @@ export function BomEditor({
       <div className="space-y-4 2xl:sticky 2xl:top-36 2xl:self-start">
         <Card title="Pricing">
           <div className="grid grid-cols-2 gap-3">
-            <ParamInput label="Target margin" suffix="%" value={bom.targetMargin} disabled={!editable} onChange={(v) => set("targetMargin", v)} />
+            {showMargin && <ParamInput label="Target margin" suffix="%" value={bom.targetMargin} disabled={!editable} onChange={(v) => set("targetMargin", v)} />}
             <ParamInput label="Labour sell" suffix="USD/h" value={bom.labourRateUSD} disabled={!editable} onChange={(v) => set("labourRateUSD", v)} />
             <ParamInput label="CAD → USD" value={bom.cadToUsd} step={0.01} disabled={!editable} onChange={(v) => set("cadToUsd", v)} />
             <ParamInput label="Certification" suffix="CAD" value={bom.certificationCost} disabled={!editable} onChange={(v) => set("certificationCost", v)} />
           </div>
           <dl className="mt-5 space-y-2 border-t border-gray-100 pt-4 text-sm">
             <Line label="Parts sub total" value={money(t.partsSubtotal)} />
-            <Line label={`Parts sell @ ${bom.targetMargin}% margin`} value={money(t.partsSell)} />
+            {showMargin && <Line label={`Parts sell @ ${bom.targetMargin}% margin`} value={money(t.partsSell)} />}
             <Line label="Total labour sell" value={money(t.labourSell)} />
-            <Line label="Build cost (parts + labour sell)" value={money(t.buildCost)} />
-            <Line label="Total with certification" value={money(t.totalWithCert)} strong />
+            {showMargin && <Line label="Build cost (parts + labour sell)" value={money(t.buildCost)} />}
+            {showMargin && <Line label="Total with certification" value={money(t.totalWithCert)} strong />}
           </dl>
         </Card>
 
@@ -381,6 +419,7 @@ export function BomEditor({
           <div className="text-xs font-medium uppercase tracking-wider text-gray-400">Actual quote price · per unit</div>
           <div className="mt-1 text-3xl font-semibold tabular">{money(t.quotePrice)}</div>
           <div className="text-sm text-gray-400 tabular">{moneyUSD(t.quotePriceUSD)} USD</div>
+          {showMargin && (
           <label className="mt-4 block">
             <span className="text-xs text-gray-400">Override price (blank = suggested {money(t.suggestedPrice)})</span>
             <input
@@ -392,6 +431,9 @@ export function BomEditor({
               onChange={(e) => set("actualQuotePrice", e.target.value === "" ? null : +e.target.value)}
             />
           </label>
+          )}
+          {!showMargin && <p className="mt-3 text-xs text-gray-400">Margin and final pricing are set by the manager.</p>}
+          {showMargin && (
           <div className="mt-4 grid grid-cols-2 gap-3 border-t border-white/10 pt-4">
             <div>
               <div className="text-xs text-gray-400">Actual margin (parts)</div>
@@ -402,7 +444,8 @@ export function BomEditor({
               <div className="text-lg font-semibold tabular">{pct(t.overallMargin)}</div>
             </div>
           </div>
-          {t.belowTarget && (
+          )}
+          {showMargin && t.belowTarget && (
             <p className="mt-3 flex gap-2 rounded-lg bg-amber-400/10 px-3 py-2 text-xs text-amber-300">
               <AlertTriangle className="size-4 shrink-0" />
               Parts margin is below the {bom.targetMargin}% target.

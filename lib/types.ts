@@ -80,6 +80,8 @@ export interface Revision {
   createdAt: string;
   createdBy: string;
   issuedAt?: string;
+  /** Who asked for this revision (rev ≥ 1) */
+  requestedBy?: "customer" | "internal";
   quote: QuoteDoc;
   bom: Bom;
 }
@@ -107,12 +109,91 @@ export interface Build {
   qc: Record<string, QcItem>;
   qcSignoff: Record<string, string>;
   shippedAt?: string;
+  changeLog?: BomChange[];
 }
 
 export interface ActivityEntry {
   at: string;
   user: string;
   text: string;
+  /** Status transition, when this entry is one */
+  from?: ProjectStatus;
+  to?: ProjectStatus;
+  comment?: string;
+  kind?: "status" | "margin" | "revision" | "change" | "info";
+}
+
+export type Role = "manager" | "designer" | "production";
+
+/** One status for the whole life of a project, quote → production. */
+export type ProjectStatus =
+  | "drafting"
+  | "quote_review"
+  | "quote_returned"
+  | "awaiting_manager"
+  | "sent"
+  | "revision_requested"
+  | "hold"
+  | "lost"
+  | "po_received"
+  | "building"
+  | "build_review"
+  | "build_returned"
+  | "ready_production"
+  | "in_production"
+  | "shipped";
+
+export interface ReviewComment {
+  id: string;
+  at: string;
+  by: string; // display name
+  byUser: string; // username
+  stage: "quote" | "build";
+  rev?: number;
+  lineId?: string;
+  lineLabel?: string;
+  text: string;
+  resolved: boolean;
+}
+
+export interface BomChange {
+  id: string;
+  at: string;
+  by: string;
+  reason: string;
+  /** Human summary of the lines that changed */
+  lines: { label: string; change: string; delta: number }[];
+  delta: number; // parts cost change of this edit (CAD)
+}
+
+export interface Notification {
+  id: string;
+  user: string; // username
+  at: string;
+  text: string;
+  href: string;
+  read: boolean;
+}
+
+export interface Supplier {
+  id: string;
+  name: string;
+  contactName: string;
+  email: string;
+  phone: string;
+  website: string;
+  address: string;
+  notes: string;
+  createdAt: string;
+}
+
+export interface PartDoc {
+  id: string;
+  name: string;
+  size: number;
+  type: string;
+  uploadedAt: string;
+  uploadedBy: string;
 }
 
 export interface Project {
@@ -133,6 +214,15 @@ export interface Project {
   stage: Stage;
   quoteStatus: QuoteStatus;
   buildStatus: BuildStatus;
+  /** Workflow status (drives tasks, dashboards and the timeline) */
+  status: ProjectStatus;
+  /** When the project entered its current status */
+  statusSince: string;
+  /** Username of the designer currently responsible */
+  assignee?: string;
+  /** Username of the peer reviewer (while in review) */
+  reviewer?: string;
+  comments?: ReviewComment[];
   lostReason?: string;
   createdAt: string;
   updatedAt: string;
@@ -160,6 +250,7 @@ export interface Part {
   updatedAt?: string;
   updatedBy?: string;
   priceHistory?: { at: string; by: string; cost: number }[];
+  docs?: PartDoc[];
 }
 
 export interface Customer {
@@ -171,6 +262,8 @@ export interface Customer {
   address: string;
   notes: string;
   createdAt: string;
+  /** Default margin % for this customer's quotes (managers only) */
+  defaultMargin?: number;
 }
 
 export interface TeamMember {
@@ -210,13 +303,30 @@ export interface Settings {
   nextMtr: number;
   team: TeamMember[];
   categories: Record<string, string>;
+  /** Flag a build when its parts cost drifts more than this % from the quote */
+  driftPercent?: number;
   /** First-run seeding progress */
-  seeded?: { parts?: boolean; projects?: boolean };
+  seeded?: { parts?: boolean; projects?: boolean; suppliers?: boolean; workflow?: boolean };
 }
 
 export interface User {
   id: string;
   username: string;
   name: string;
+  email: string;
+  phone: string;
+  role: Role;
+  title: string;
+  active: boolean;
+  emailNotifications: boolean;
   passwordHash: string;
+  /** Set once the password differs from the built-in default */
+  passwordChanged?: boolean;
+  createdAt: string;
+}
+
+export interface SessionUser {
+  username: string;
+  name: string;
+  role: Role;
 }

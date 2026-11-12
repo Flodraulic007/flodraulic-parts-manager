@@ -1,14 +1,16 @@
 import { notFound } from "next/navigation";
 import { getProject, getSettings } from "@/lib/data";
+import { requireUser } from "@/lib/auth";
+import { canEditQuote } from "@/lib/workflow";
 import { RevisionBar } from "@/components/revision-bar";
 import { QuoteEditor } from "./quote-editor";
 
 export default async function QuotePage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ rev?: string }> }) {
   const [{ id }, { rev }] = await Promise.all([params, searchParams]);
-  const [p, settings] = await Promise.all([getProject(id), getSettings()]);
+  const [p, settings, user] = await Promise.all([getProject(id), getSettings(), requireUser()]);
   if (!p) notFound();
   const r = (rev != null ? p.revisions.find((x) => x.rev === +rev) : undefined) ?? p.revisions[p.revisions.length - 1];
-  const editable = r.status === "draft" && p.stage === "quote";
+  const editable = r.rev === p.revisions.at(-1)!.rev && canEditQuote(p, user);
 
   return (
     <div className="px-4 py-6 sm:px-8">

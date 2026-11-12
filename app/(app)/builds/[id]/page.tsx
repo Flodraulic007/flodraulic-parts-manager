@@ -31,9 +31,9 @@ export default async function BuildOverview({ params }: { params: Promise<{ id: 
         <Stat
           label="Due date"
           value={date(b.dueDate)}
-          sub={p.buildStatus === "shipped" ? `Shipped ${date(b.shippedAt)}` : daysLeft < 0 ? `${-daysLeft} days overdue` : `${daysLeft} days left`}
+          sub={p.status === "shipped" ? `Shipped ${date(b.shippedAt)}` : daysLeft < 0 ? `${-daysLeft} days overdue` : `${daysLeft} days left`}
           icon={<CalendarClock className="size-4" />}
-          tone={p.buildStatus !== "shipped" && daysLeft < 0 ? "rose" : "blue"}
+          tone={p.status !== "shipped" && daysLeft < 0 ? "rose" : "blue"}
         />
         <Stat label="Parts ready" value={`${pr.ready}/${pr.total}`} sub={`${pr.ordered} on order · ${pr.outstanding} to order`} icon={<PackageSearch className="size-4" />} tone={pr.outstanding ? "orange" : "green"} />
         <Stat label="QC checklist" value={`${qc.done}/${qc.total}`} sub={qc.done === qc.total ? "Complete" : "In progress"} icon={<ClipboardCheck className="size-4" />} tone={qc.done === qc.total ? "green" : "violet"} />
@@ -55,6 +55,18 @@ export default async function BuildOverview({ params }: { params: Promise<{ id: 
             team={settings.team.map((t) => t.name)}
           />
           <BuildMetaForm id={p.id} dueDate={b.dueDate} assignedTo={b.assignedTo} team={settings.team.map((t) => t.name)} />
+          {b.changeLog && b.changeLog.length > 0 && (
+            <Card title="Latest build changes" actions={<Link href={`/builds/${p.id}/bom`} className="text-sm font-medium text-brand-600">Change log →</Link>}>
+              <ul className="space-y-2 text-sm">
+                {b.changeLog.slice(0, 3).map((c) => (
+                  <li key={c.id} className="flex justify-between gap-3">
+                    <span className="text-gray-800">{c.reason} <span className="text-xs text-gray-500">— {c.by}</span></span>
+                    <span className={`shrink-0 tabular ${c.delta > 0 ? "text-rose-600" : "text-emerald-600"}`}>{c.delta >= 0 ? "+" : ""}{money(c.delta)}</span>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
           <Card title="Source">
             <dl className="grid gap-4 text-sm sm:grid-cols-3">
               <div>

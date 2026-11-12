@@ -25,7 +25,9 @@ export function BuildStatusControl({ id, status }: { id: string; status: BuildSt
   return (
     <div className="flex flex-wrap items-center gap-2">
       <ol className="hidden items-center rounded-lg border border-gray-200 bg-white p-0.5 shadow-xs md:flex">
-        {BUILD_FLOW.map((s, i) => (
+        {BUILD_FLOW.filter((s) => s !== "queued").map((s) => {
+          const i = BUILD_FLOW.indexOf(s);
+          return (
           <li key={s}>
             <button
               disabled={busy}
@@ -40,7 +42,8 @@ export function BuildStatusControl({ id, status }: { id: string; status: BuildSt
               {BUILD_STATUS[s].label}
             </button>
           </li>
-        ))}
+          );
+        })}
       </ol>
       {next && (
         <Button variant="primary" size="sm" disabled={busy} onClick={() => change(next)} icon={<ChevronRight className="size-4" />}>

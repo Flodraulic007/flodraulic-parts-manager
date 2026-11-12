@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowRight, Clock, DollarSign, Layers, Percent } from "lucide-react";
 import { getProject, getSettings } from "@/lib/data";
+import { requireUser } from "@/lib/auth";
 import { bomTotals, currentRevision, quoteTotals, validUntil } from "@/lib/calc";
 import { date, money, pct } from "@/lib/format";
 import { Card, Stat } from "@/components/ui";
@@ -10,7 +11,7 @@ import { ActivityList } from "@/components/activity-list";
 
 export default async function QuoteOverview({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [p, settings] = await Promise.all([getProject(id), getSettings()]);
+  const [p, settings, user] = await Promise.all([getProject(id), getSettings(), requireUser()]);
   if (!p) notFound();
   const r = currentRevision(p)!;
   const bt = bomTotals(r.bom);
@@ -19,19 +20,25 @@ export default async function QuoteOverview({ params }: { params: Promise<{ id: 
   const today = new Date().toISOString().slice(0, 10);
   const until = validUntil(r.quote);
 
+  const firstTo = (s: string) => [...p.activity].reverse().find((a) => a.to === s)?.at;
+  const reviewed = firstTo("awaiting_manager");
   const steps = [
     { label: "Quote created", done: true, at: p.createdAt },
-    { label: "BOM priced", done: parts > 0 && bt.labourHours > 0 },
-    { label: "Issued to customer", done: p.revisions.some((x) => x.issuedAt), at: p.revisions.find((x) => x.issuedAt)?.issuedAt },
-    { label: "Approved / PO received", done: p.quoteStatus === "approved" },
-    { label: "Released to build", done: p.stage === "build", at: p.build?.approvedAt },
+    { label: "Designer assigned", done: !!p.assignee || p.stage === "build" },
+    { label: "Peer reviewed", done: !!reviewed || ["sent", "po_received"].includes(p.status) || p.stage === "build", at: reviewed },
+    { label: "Sent to client", done: p.revisions.some((x) => x.issuedAt), at: p.revisions.find((x) => x.issuedAt)?.issuedAt },
+    { label: "PO received → build", done: p.stage === "build", at: p.build?.approvedAt },
   ];
 
   return (
     <div className="space-y-6 px-4 py-6 sm:px-8">
       <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
         <Stat label="Quote total (subtotal)" value={money(qt.subtotal)} sub={`${p.pcs} pc × ${money(bt.quotePrice)}`} icon={<DollarSign className="size-4" />} tone="blue" />
-        <Stat label="Parts margin" value={pct(bt.actualMargin)} sub={`Target ${r.bom.targetMargin}%`} icon={<Percent className="size-4" />} tone={bt.belowTarget ? "amber" : "green"} />
+        {user.role === "manager" ? (
+          <Stat label="Parts margin" value={pct(bt.actualMargin)} sub={`Target ${r.bom.targetMargin}%`} icon={<Percent className="size-4" />} tone={bt.belowTarget ? "amber" : "green"} />
+        ) : (
+          <Stat label="Revision" value={`v${r.rev + 1}`} sub={r.quoteNumber} icon={<Percent className="size-4" />} tone="slate" />
+        )}
         <Stat label="Components" value={parts} sub={`${money(bt.partsSubtotal)} parts cost`} icon={<Layers className="size-4" />} tone="violet" />
         <Stat label="Labour" value={`${bt.labourHours} h`} sub={money(bt.labourSell)} icon={<Clock className="size-4" />} tone="orange" />
       </div>

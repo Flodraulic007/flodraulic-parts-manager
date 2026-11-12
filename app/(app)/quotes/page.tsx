@@ -2,7 +2,8 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { getProjects } from "@/lib/data";
 import { currentRevision, projectValue, validUntil } from "@/lib/calc";
-import { QUOTE_STATUS } from "@/lib/defaults";
+import { STATUS } from "@/lib/workflow";
+import { requireRole } from "@/lib/auth";
 import { date, money0 } from "@/lib/format";
 import { Badge, EmptyState, PageHeader } from "@/components/ui";
 import { cx } from "@/lib/cx";
@@ -23,6 +24,7 @@ const FILTERS: { key: string; label: string }[] = [
 ];
 
 export default async function QuotesPage({ searchParams }: { searchParams: Promise<{ status?: string }> }) {
+  await requireRole("manager", "designer");
   const { status = "open" } = await searchParams;
   const all = (await getProjects()).filter((p) => !p.isRepeat);
   const match = (s: QuoteStatus) => status === "all" || (status === "open" ? s === "draft" || s === "sent" : s === status);
@@ -67,7 +69,7 @@ export default async function QuotesPage({ searchParams }: { searchParams: Promi
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {quotes.map((p) => {
             const r = currentRevision(p)!;
-            const st = QUOTE_STATUS[p.quoteStatus];
+            const st = STATUS[p.status];
             const until = validUntil(r.quote);
             const expired = p.quoteStatus === "sent" && until < today;
             return (

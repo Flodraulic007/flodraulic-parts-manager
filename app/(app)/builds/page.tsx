@@ -2,13 +2,15 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { Wrench } from "lucide-react";
 import { getProjects } from "@/lib/data";
-import { BUILD_FLOW, BUILD_STATUS } from "@/lib/defaults";
+import { STATUS } from "@/lib/workflow";
 import { quoteNumber } from "@/lib/calc";
 import { procurementProgress, qcProgress } from "@/lib/status";
 import { date } from "@/lib/format";
 import { Badge, EmptyState, PageHeader } from "@/components/ui";
 import { cx } from "@/lib/cx";
-import type { BuildStatus } from "@/lib/types";
+import type { ProjectStatus } from "@/lib/types";
+
+const FLOW: ProjectStatus[] = ["po_received", "building", "build_returned", "build_review", "ready_production", "in_production", "shipped"];
 
 export const metadata: Metadata = { title: "Build" };
 
@@ -16,8 +18,8 @@ export default async function BuildsPage({ searchParams }: { searchParams: Promi
   const { status = "active", view = "board" } = await searchParams;
   const builds = (await getProjects()).filter((p) => p.stage === "build");
   const today = new Date().toISOString().slice(0, 10);
-  const filtered = builds.filter((p) => (status === "all" ? true : status === "active" ? p.buildStatus !== "shipped" : p.buildStatus === status));
-  const columns: BuildStatus[] = status === "all" ? BUILD_FLOW : status === "active" ? BUILD_FLOW.filter((s) => s !== "shipped") : [status as BuildStatus];
+  const filtered = builds.filter((p) => (status === "all" ? true : status === "active" ? p.status !== "shipped" : p.status === status));
+  const columns: ProjectStatus[] = status === "all" ? FLOW : status === "active" ? FLOW.filter((s) => s !== "shipped") : [status as ProjectStatus];
 
   return (
     <div className="mx-auto max-w-[1600px] px-4 py-8 sm:px-8">
@@ -40,7 +42,7 @@ export default async function BuildsPage({ searchParams }: { searchParams: Promi
         }
       />
       <div className="mb-5 flex flex-wrap gap-1.5">
-        {[["active", "Active"], ...BUILD_FLOW.map((s) => [s, BUILD_STATUS[s].label]), ["all", "All"]].map(([k, l]) => (
+        {[["active", "Active"], ...FLOW.map((s) => [s, STATUS[s].label]), ["all", "All"]].map(([k, l]) => (
           <Link
             key={k}
             href={`/builds?status=${k}&view=${view}`}
@@ -61,18 +63,18 @@ export default async function BuildsPage({ searchParams }: { searchParams: Promi
       ) : view === "board" ? (
         <div className="flex gap-4 overflow-x-auto pb-4">
           {columns.map((col) => {
-            const items = filtered.filter((p) => p.buildStatus === col);
+            const items = filtered.filter((p) => p.status === col);
             return (
               <div key={col} className="w-72 shrink-0">
                 <div className="mb-2 flex items-center justify-between px-1">
-                  <Badge tone={BUILD_STATUS[col].tone}>{BUILD_STATUS[col].label}</Badge>
+                  <Badge tone={STATUS[col].tone}>{STATUS[col].label}</Badge>
                   <span className="text-xs font-semibold text-gray-400">{items.length}</span>
                 </div>
                 <div className="space-y-2.5 rounded-xl bg-gray-200/40 p-2">
                   {items.map((p) => {
                     const pr = procurementProgress(p);
                     const qc = qcProgress(p);
-                    const overdue = p.build && p.build.dueDate < today && p.buildStatus !== "shipped";
+                    const overdue = p.build && p.build.dueDate < today && p.status !== "shipped";
                     return (
                       <Link key={p.id} href={`/builds/${p.id}`} className="block rounded-lg border border-gray-200 bg-white p-3.5 shadow-xs transition hover:border-brand-200 hover:shadow-md">
                         <div className="flex items-start justify-between gap-2">
@@ -119,7 +121,7 @@ export default async function BuildsPage({ searchParams }: { searchParams: Promi
                     <td className="px-4 py-3"><div className="font-medium">{p.customer}</div><div className="text-xs text-gray-500">{p.description.replace(/_/g, " ")}</div></td>
                     <td className="px-4 py-3 tabular">{p.pcs}</td>
                     <td className="px-4 py-3 font-mono text-xs">{p.serialNumber || <span className="text-gray-300">—</span>}</td>
-                    <td className="px-4 py-3"><Badge tone={BUILD_STATUS[p.buildStatus].tone}>{BUILD_STATUS[p.buildStatus].label}</Badge></td>
+                    <td className="px-4 py-3"><Badge tone={STATUS[p.status].tone}>{STATUS[p.status].label}</Badge></td>
                     <td className="px-4 py-3 tabular">{pr.ready}/{pr.total}</td>
                     <td className="px-4 py-3 tabular">{qc.done}/{qc.total}</td>
                     <td className="px-4 py-3 text-gray-600">{date(p.build?.dueDate)}</td>

@@ -18,7 +18,7 @@ export default async function F5Page({ params }: { params: Promise<{ id: string 
         values={p.build.f5}
         motors={p.build.motors}
         team={settings.team.map((t) => t.name)}
-        editable={p.buildStatus !== "shipped"}
+        editable={p.status !== "shipped"}
       />
     </div>
   );

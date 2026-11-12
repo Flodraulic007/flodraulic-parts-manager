@@ -1,5 +1,6 @@
 import { requireUser } from "@/lib/auth";
-import { getCustomers, getProjects, getSettings } from "@/lib/data";
+import { getCustomers, getNotifications, getProjects, getSettings, getUsers } from "@/lib/data";
+import { tasksFor } from "@/lib/workflow";
 import { Sidebar } from "@/components/sidebar";
 import { Topbar } from "@/components/topbar";
 import { Toaster } from "@/components/toast";
@@ -11,16 +12,19 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const user = await requireUser();
   let data;
   try {
-    data = await Promise.all([getProjects(), getSettings(), getCustomers()]);
+    data = await Promise.all([getProjects(), getSettings(), getCustomers(), getUsers(), getNotifications(user.username)]);
   } catch (e) {
     console.error("[app] data load failed", e);
     return <DatabaseError message={e instanceof Error ? e.message : String(e)} />;
   }
-  const [projects, settings, customers] = data;
+  const [projects, , customers, users, notifications] = data;
   const counts = {
-    quotes: projects.filter((p) => p.stage === "quote" && (p.quoteStatus === "draft" || p.quoteStatus === "sent")).length,
-    builds: projects.filter((p) => p.stage === "build" && p.buildStatus !== "shipped").length,
+    quotes: projects.filter((p) => p.stage === "quote" && !["lost", "hold"].includes(p.status)).length,
+    builds: projects.filter((p) => p.stage === "build" && !["ready_production", "in_production", "shipped"].includes(p.status)).length,
+    production: projects.filter((p) => p.status === "ready_production" || p.status === "in_production").length,
+    tasks: tasksFor(projects, user).length,
   };
+  const designers = users.filter((u) => u.active && (u.role === "designer" || u.role === "manager")).map((u) => ({ username: u.username, name: u.name }));
   const searchIndex = projects.map((p) => ({
     id: p.id,
     stage: p.stage,
@@ -32,12 +36,21 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="flex min-h-screen">
-      <Sidebar counts={counts} user={user.name} />
+      <Sidebar counts={counts} user={user.name} role={user.role} />
       <div className="flex min-w-0 flex-1 flex-col lg:pl-64">
         <Topbar
           searchIndex={searchIndex}
-          team={settings.team.map((t) => t.name)}
-          customers={customers.map((c) => ({ name: c.name, attention: c.attention, email: c.email, phone: c.phone }))}
+          designers={designers}
+          role={user.role}
+          username={user.username}
+          notifications={notifications}
+          customers={customers.map((c) => ({
+            name: c.name,
+            attention: c.attention,
+            email: c.email,
+            phone: c.phone,
+            defaultMargin: user.role === "manager" ? c.defaultMargin : undefined,
+          }))}
           userName={user.name}
         />
         <main className="flex-1">{children}</main>

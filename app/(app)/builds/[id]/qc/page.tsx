@@ -16,7 +16,7 @@ export default async function QcPage({ params }: { params: Promise<{ id: string 
         qc={p.build.qc}
         signoff={p.build.qcSignoff}
         team={settings.team.map((t) => t.name)}
-        editable={p.buildStatus !== "shipped"}
+        editable={p.status !== "shipped"}
       />
     </div>
   );

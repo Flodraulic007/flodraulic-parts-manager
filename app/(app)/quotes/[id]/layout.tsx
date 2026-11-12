@@ -1,18 +1,22 @@
-import { notFound } from "next/navigation";
-import { getProject, getSettings } from "@/lib/data";
+import { notFound, redirect } from "next/navigation";
+import { getProject, getUsers } from "@/lib/data";
+import { requireUser } from "@/lib/auth";
 import { currentRevision } from "@/lib/calc";
-import { QUOTE_STATUS } from "@/lib/defaults";
+import { STATUS, daysInStatus } from "@/lib/workflow";
 import { Badge } from "@/components/ui";
 import { ProjectNav } from "@/components/project-nav";
-import { QuoteActions } from "./quote-actions";
+import { WorkflowBar } from "@/components/workflow-bar";
 import Link from "next/link";
 
 export default async function QuoteWorkspace({ children, params }: { children: React.ReactNode; params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [p, settings] = await Promise.all([getProject(id), getSettings()]);
+  const [p, users, user] = await Promise.all([getProject(id), getUsers(), requireUser()]);
   if (!p || p.isRepeat) notFound();
+  if (user.role === "production") redirect(p.stage === "build" ? `/builds/${p.id}` : "/");
   const r = currentRevision(p)!;
-  const st = QUOTE_STATUS[p.quoteStatus];
+  const st = STATUS[p.status];
+  const designers = users.filter((u) => u.active && u.role !== "production").map((u) => ({ username: u.username, name: u.name }));
+  const openComments = (p.comments ?? []).filter((c) => c.stage === "quote" && !c.resolved).length;
   const base = `/quotes/${p.id}`;
 
   return (
@@ -45,6 +49,7 @@ export default async function QuoteWorkspace({ children, params }: { children: R
             group: "Quotation",
             badge: <span className="rounded bg-gray-100 px-1.5 text-[11px] font-semibold text-gray-500">{p.revisions.length}</span>,
           },
+          { href: `${base}/timeline`, label: "Timeline", icon: "activity", group: "Project" },
         ]}
       />
       <div className="min-w-0 flex-1">
@@ -54,15 +59,30 @@ export default async function QuoteWorkspace({ children, params }: { children: R
             <span className="mx-1.5 text-gray-300">/</span>
             <span className="font-medium text-gray-900">{p.description.replace(/_/g, " ")}</span>
           </div>
-          <QuoteActions
+          {p.stage === "build" ? (
+            <Link href={`/builds/${p.id}`} className="inline-flex h-9 items-center rounded-lg bg-ink-900 px-3.5 text-sm font-medium text-white hover:bg-ink-800">
+              Quote frozen — open build {p.mtrNumber}
+            </Link>
+          ) : (
+          <WorkflowBar
             id={p.id}
             stage={p.stage}
-            status={p.quoteStatus}
-            current={{ rev: r.rev, status: r.status, quoteNumber: r.quoteNumber }}
-            revisions={p.revisions.map((x) => ({ rev: x.rev, quoteNumber: x.quoteNumber, status: x.status }))}
-            poNumber={p.poNumber}
-            team={settings.team.map((t) => t.name)}
+            status={p.status}
+            role={user.role}
+            username={user.username}
+            assignee={p.assignee}
+            reviewer={p.reviewer}
+            designers={designers}
+            daysInStatus={daysInStatus(p)}
+            openComments={openComments}
+            quote={{
+              quoteNumber: r.quoteNumber,
+              revStatus: r.status,
+              revisions: p.revisions.map((x) => ({ rev: x.rev, quoteNumber: x.quoteNumber, status: x.status })),
+              poNumber: p.poNumber,
+            }}
           />
+          )}
         </div>
         {children}
       </div>

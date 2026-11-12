@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Repeat, FileText } from "lucide-react";
 import { createProject, type NewQuoteInput } from "@/lib/actions";
+import type { Role } from "@/lib/types";
 import { Button, Field, Modal, cx } from "./ui";
 import { run, toast } from "./toast";
 
@@ -12,9 +13,11 @@ export interface CustomerLite {
   attention: string;
   email: string;
   phone: string;
+  defaultMargin?: number;
 }
 
-const empty = (quotedBy: string): NewQuoteInput => ({
+const empty = (quotedBy: string, assignee = ""): NewQuoteInput => ({
+  assignee,
   customer: "",
   description: "",
   pcs: 1,
@@ -34,18 +37,24 @@ const empty = (quotedBy: string): NewQuoteInput => ({
 export function NewQuoteModal({
   open,
   onClose,
-  team,
+  designers,
   customers,
   userName,
+  username,
+  role,
 }: {
   open: boolean;
   onClose: () => void;
-  team: string[];
+  designers: { username: string; name: string }[];
   customers: CustomerLite[];
   userName: string;
+  username: string;
+  role: Role;
 }) {
   const router = useRouter();
-  const [f, setF] = useState<NewQuoteInput>(() => empty(team.includes(userName) ? userName : team[0] ?? userName));
+  const manager = role === "manager";
+  const [f, setF] = useState<NewQuoteInput>(() => empty(userName, manager ? "" : username));
+  const cust = customers.find((x) => x.name.toUpperCase() === f.customer.trim().toUpperCase());
   const [busy, setBusy] = useState(false);
   const set = <K extends keyof NewQuoteInput>(k: K, v: NewQuoteInput[K]) => setF((x) => ({ ...x, [k]: v }));
 
@@ -65,7 +74,7 @@ export function NewQuoteModal({
     if (r.ok && r.data) {
       toast(f.isRepeat ? `Repeat order ${f.repeatMtr.toUpperCase()} added to build` : "Quote created — quote # and MTR # assigned");
       onClose();
-      setF(empty(f.quotedBy));
+      setF(empty(userName, manager ? "" : username));
       router.push(r.data.stage === "build" ? `/builds/${r.data.id}` : `/quotes/${r.data.id}/quote`);
     }
   };
@@ -118,10 +127,21 @@ export function NewQuoteModal({
             ))}
           </datalist>
         </Field>
-        <Field label="Quoted by" className="sm:col-span-3">
-          <select className="field" value={f.quotedBy} onChange={(e) => set("quotedBy", e.target.value)}>
-            {team.map((t) => (
-              <option key={t}>{t}</option>
+        <Field label={f.isRepeat ? "Build designer" : "Assign to designer"} hint={manager ? undefined : "you"} className="sm:col-span-3">
+          <select
+            className="field"
+            value={f.assignee}
+            disabled={!manager}
+            onChange={(e) => {
+              const d = designers.find((x) => x.username === e.target.value);
+              setF((x) => ({ ...x, assignee: e.target.value, quotedBy: d?.name ?? x.quotedBy }));
+            }}
+          >
+            <option value="">Unassigned — assign later</option>
+            {designers.map((d) => (
+              <option key={d.username} value={d.username}>
+                {d.name}
+              </option>
             ))}
           </select>
         </Field>
@@ -170,6 +190,12 @@ export function NewQuoteModal({
           <input className="field" value={f.poNumber} onChange={(e) => set("poNumber", e.target.value)} />
         </Field>
 
+        {manager && !f.isRepeat && (
+          <p className="rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600 sm:col-span-6">
+            Margin for this quote:{" "}
+            <b>{cust?.defaultMargin != null ? `${cust.defaultMargin}% (customer default)` : "company default"}</b>. You can override it per quote on the BOM page.
+          </p>
+        )}
         {!f.isRepeat && (
           <>
             <div className="border-t border-gray-100 pt-4 text-xs font-semibold uppercase tracking-wider text-gray-400 sm:col-span-6">

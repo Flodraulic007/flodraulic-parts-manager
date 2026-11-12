@@ -9,7 +9,7 @@ import type { MongoClient } from "mongodb";
  *  - Otherwise they live in a JSON file at $DATA_DIR/db.json (default ./data/db.json).
  * Every document has a string `id`.
  */
-export type CollectionName = "projects" | "parts" | "customers" | "settings" | "users";
+export type CollectionName = "projects" | "parts" | "customers" | "settings" | "users" | "notifications" | "suppliers";
 
 interface Doc {
   id: string;
@@ -22,6 +22,10 @@ interface Adapter {
   putMany<T extends Doc>(c: CollectionName, docs: T[]): Promise<void>;
   remove(c: CollectionName, id: string): Promise<void>;
   count(c: CollectionName): Promise<number>;
+  /** Binary files (part documents). */
+  putFile(id: string, data: Buffer, type: string): Promise<void>;
+  getFile(id: string): Promise<{ data: Buffer; type: string } | null>;
+  removeFile(id: string): Promise<void>;
 }
 
 type FileData = Record<string, Record<string, Doc>>;
@@ -84,8 +88,27 @@ function fileAdapter(): Adapter {
     async count(c) {
       return Object.keys(col(c)).length;
     },
+    async putFile(id, buf, type) {
+      const fdir = path.join(dir, "files");
+      fs.mkdirSync(fdir, { recursive: true });
+      fs.writeFileSync(path.join(fdir, safe(id)), buf);
+      fs.writeFileSync(path.join(fdir, safe(id) + ".type"), type);
+    },
+    async getFile(id) {
+      const p = path.join(dir, "files", safe(id));
+      if (!fs.existsSync(p)) return null;
+      const typeFile = p + ".type";
+      return { data: fs.readFileSync(p), type: fs.existsSync(typeFile) ? fs.readFileSync(typeFile, "utf8") : "application/octet-stream" };
+    },
+    async removeFile(id) {
+      const p = path.join(dir, "files", safe(id));
+      fs.rmSync(p, { force: true });
+      fs.rmSync(p + ".type", { force: true });
+    },
   };
 }
+
+const safe = (id: string) => id.replace(/[^a-zA-Z0-9_-]/g, "");
 
 function mongoAdapter(uri: string): Adapter {
   const client = async () => {
@@ -101,6 +124,10 @@ function mongoAdapter(uri: string): Adapter {
   const coll = async (c: CollectionName) =>
     // "hub_" prefix keeps this app's data apart from any existing collections (e.g. the legacy "parts").
     (await client()).db(process.env.MONGODB_DB || "flodraulic").collection<Doc & { _id: string }>(`hub_${c}`);
+  const bucket = async () => {
+    const { GridFSBucket } = await import("mongodb");
+    return new GridFSBucket((await client()).db(process.env.MONGODB_DB || "flodraulic"), { bucketName: "hub_files" });
+  };
   const strip = <T>(d: Record<string, unknown>): T => {
     const { _id, ...rest } = d;
     void _id;
@@ -134,6 +161,28 @@ function mongoAdapter(uri: string): Adapter {
     },
     async count(c) {
       return (await coll(c)).countDocuments();
+    },
+    async putFile(id, buf, type) {
+      const b = await bucket();
+      await this.removeFile(id);
+      await new Promise<void>((resolve, reject) => {
+        const s = b.openUploadStream(id, { metadata: { type } });
+        s.on("finish", () => resolve());
+        s.on("error", reject);
+        s.end(buf);
+      });
+    },
+    async getFile(id) {
+      const b = await bucket();
+      const [f] = await b.find({ filename: id }).limit(1).toArray();
+      if (!f) return null;
+      const chunks: Buffer[] = [];
+      for await (const c of b.openDownloadStream(f._id)) chunks.push(c as Buffer);
+      return { data: Buffer.concat(chunks), type: (f.metadata?.type as string) || "application/octet-stream" };
+    },
+    async removeFile(id) {
+      const b = await bucket();
+      for (const f of await b.find({ filename: id }).toArray()) await b.delete(f._id);
     },
   };
 }

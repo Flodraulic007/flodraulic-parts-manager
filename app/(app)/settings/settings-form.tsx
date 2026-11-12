@@ -1,7 +1,6 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { Plus, Trash2 } from "lucide-react";
 import type { Settings } from "@/lib/types";
 import { saveSettings } from "@/lib/actions";
 import { Card, Field } from "@/components/ui";
@@ -106,36 +105,25 @@ export function SettingsForm({ settings, nextMtr }: { settings: Settings; nextMt
         </div>
       </Card>
 
-      <Card
-        title="Team"
-        actions={
-          <button
-            onClick={() => up("team", [...s.team, { name: "", email: "", phone: "", role: "Controls Designer" }])}
-            className="inline-flex items-center gap-1 text-sm font-medium text-brand-600 hover:text-brand-700"
-          >
-            <Plus className="size-4" /> Add member
-          </button>
-        }
-      >
-        <p className="mb-3 text-sm text-gray-500">Used for “Quoted by” and “Designer” on quotes — email and phone fill in automatically.</p>
-        <div className="space-y-2">
-          {s.team.map((m, i) => (
-            <div key={i} className="grid gap-2 sm:grid-cols-[1fr_1fr_160px_160px_36px]">
-              {(["name", "email", "phone", "role"] as const).map((k) => (
-                <input
-                  key={k}
-                  className="field h-9 text-sm"
-                  placeholder={k}
-                  value={m[k]}
-                  onChange={(e) => up("team", s.team.map((x, j) => (j === i ? { ...x, [k]: e.target.value } : x)))}
-                />
-              ))}
-              <button onClick={() => up("team", s.team.filter((_, j) => j !== i))} className="flex items-center justify-center rounded-lg text-gray-400 hover:bg-red-50 hover:text-red-600" aria-label="Remove member">
-                <Trash2 className="size-4" />
-              </button>
-            </div>
-          ))}
+      <Card title="Build cost drift">
+        <div className="grid gap-4 sm:grid-cols-3">
+          <Field label="Flag builds that drift more than (%)" hint="from the quoted cost">
+            <input type="number" min={1} max={100} className="field" value={s.driftPercent ?? 10} onChange={(e) => up("driftPercent", +e.target.value)} />
+          </Field>
+          <p className="text-sm text-gray-500 sm:col-span-2">
+            When a build BOM&apos;s parts + labour drift past this percentage from the quoted BOM, the build and the dashboard show a &ldquo;quote revision may
+            be needed&rdquo; flag.
+          </p>
         </div>
+      </Card>
+
+      <Card title="Team">
+        <p className="text-sm text-gray-600">
+          The people available as designers, reviewers and &ldquo;quoted by&rdquo; come from user accounts.{" "}
+          <a href="/users" className="font-medium text-brand-600 hover:text-brand-700">
+            Manage users & roles →
+          </a>
+        </p>
       </Card>
       <SaveBar dirty={ed.dirty} saving={ed.saving} onSave={ed.save} onReset={ed.reset} />
     </div>

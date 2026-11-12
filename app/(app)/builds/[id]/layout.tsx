@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getProject } from "@/lib/data";
-import { BUILD_STATUS } from "@/lib/defaults";
+import { getProject, getUsers } from "@/lib/data";
+import { requireUser } from "@/lib/auth";
+import { STATUS, daysInStatus } from "@/lib/workflow";
+import { WorkflowBar } from "@/components/workflow-bar";
 import { quoteNumber } from "@/lib/calc";
 import { procurementProgress, qcProgress } from "@/lib/status";
 import { Badge } from "@/components/ui";
@@ -10,10 +12,13 @@ import { BuildStatusControl } from "./build-status-control";
 
 export default async function BuildWorkspace({ children, params }: { children: React.ReactNode; params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const p = await getProject(id);
+  const [p, users, user] = await Promise.all([getProject(id), getUsers(), requireUser()]);
   if (!p || !p.build) notFound();
   const base = `/builds/${p.id}`;
-  const st = BUILD_STATUS[p.buildStatus];
+  const st = STATUS[p.status];
+  const designers = users.filter((u) => u.active && u.role !== "production").map((u) => ({ username: u.username, name: u.name }));
+  const openComments = (p.comments ?? []).filter((c) => c.stage === "build" && !c.resolved).length;
+  const inProduction = ["ready_production", "in_production", "shipped"].includes(p.status);
   const pr = procurementProgress(p);
   const qc = qcProgress(p);
   const pill = (t: string) => <span className="rounded bg-gray-100 px-1.5 text-[11px] font-semibold text-gray-500 tabular">{t}</span>;
@@ -45,6 +50,7 @@ export default async function BuildWorkspace({ children, params }: { children: R
                 { href: `${base}/quote-bom`, label: "Quoted BOM", icon: "locked" as const, group: "From quotation" },
               ]
             : []),
+          { href: `${base}/timeline`, label: "Timeline", icon: "activity" as const, group: "Project" },
         ]}
       />
       <div className="min-w-0 flex-1">
@@ -54,7 +60,23 @@ export default async function BuildWorkspace({ children, params }: { children: R
             <span className="mx-1.5 text-gray-300">/</span>
             <span className="font-medium text-gray-900">{p.description.replace(/_/g, " ")}</span>
           </div>
-          <BuildStatusControl id={p.id} status={p.buildStatus} />
+          <div className="flex flex-wrap items-center gap-3">
+            <WorkflowBar
+              id={p.id}
+              stage={p.stage}
+              status={p.status}
+              role={user.role}
+              username={user.username}
+              assignee={p.assignee}
+              reviewer={p.reviewer}
+              designers={designers}
+              daysInStatus={daysInStatus(p)}
+              openComments={openComments}
+            />
+            {inProduction && p.status !== "ready_production" && (user.role === "production" || user.role === "manager") && (
+              <BuildStatusControl id={p.id} status={p.buildStatus} />
+            )}
+          </div>
         </div>
         {children}
       </div>
