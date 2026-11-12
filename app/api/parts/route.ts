@@ -1,40 +1,26 @@
 import { NextResponse } from "next/server";
-import clientPromise from "@/lib/mongodb";
+import { getParts } from "@/lib/data";
 
+/** Part search used by the BOM part picker and global search. */
 export async function GET(request: Request) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const query = searchParams.get("q") || "";
-    const category = searchParams.get("category") || "";
-    const page = parseInt(searchParams.get("page") || "1");
-    const limit = 50;
-    const skip = (page - 1) * limit;
+  const { searchParams } = new URL(request.url);
+  const q = (searchParams.get("q") || "").trim().toLowerCase();
+  const limit = Math.min(parseInt(searchParams.get("limit") || "20") || 20, 100);
+  const parts = await getParts();
+  if (!q) return NextResponse.json({ parts: parts.slice(0, limit), total: parts.length });
 
-    const client = await clientPromise;
-    const db = client.db("flodraulic");
-    const collection = db.collection("parts");
-
-    const filter: Record<string, unknown> = {};
-    if (query) {
-      filter.$or = [
-        { partNumber: { $regex: query, $options: "i" } },
-        { description: { $regex: query, $options: "i" } },
-        { manufacturerPartNumber: { $regex: query, $options: "i" } },
-        { supplier: { $regex: query, $options: "i" } },
-      ];
-    }
-    if (category) {
-      filter.category = category;
-    }
-
-    const [parts, total] = await Promise.all([
-      collection.find(filter).skip(skip).limit(limit).toArray(),
-      collection.countDocuments(filter),
-    ]);
-
-    return NextResponse.json({ parts, total, page, pages: Math.ceil(total / limit) });
-  } catch (error) {
-    console.error("Parts API error:", error);
-    return NextResponse.json({ error: "Failed to fetch parts" }, { status: 500 });
+  const terms = q.split(/\s+/);
+  const scored = [];
+  for (const p of parts) {
+    const hay = `${p.partNumber} ${p.description} ${p.mfrPartNumber} ${p.supplier}`.toLowerCase();
+    if (!terms.every((t) => hay.includes(t))) continue;
+    let score = 0;
+    if (p.partNumber.toLowerCase() === q || p.mfrPartNumber.toLowerCase() === q) score += 100;
+    if (p.partNumber.toLowerCase().startsWith(q)) score += 50;
+    if (p.mfrPartNumber.toLowerCase().startsWith(q)) score += 40;
+    if (p.obsolete) score -= 30;
+    scored.push({ p, score });
   }
+  scored.sort((a, b) => b.score - a.score || a.p.partNumber.localeCompare(b.p.partNumber));
+  return NextResponse.json({ parts: scored.slice(0, limit).map((s) => s.p), total: scored.length });
 }
